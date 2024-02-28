@@ -207,6 +207,12 @@ func getDataFromWEB() {
 				}
 			} else if res.OP == "list-serial" {
 				writeSerialListToWEB()
+			} else if res.OP == "set-fan-speed" {
+				if verbose {
+					fmt.Println("Set fan speed: " + res.Data + " RPM")
+				}
+				speed, _ := strconv.Atoi(res.Data)
+				setFanSpeed(speed)
 			}
 		}
 	}
@@ -254,4 +260,17 @@ func writeSerialListToWEB() {
 	frame, _ := json.Marshal(info)
 	// send info to websocket data hub
 	hub.broadcast <- frame
+}
+
+func setFanSpeed(speed int) {
+	// check speed
+	if speed < 0 || speed > 10000 {
+		log.Print("Invalid speed: ", speed)
+		return
+	}
+	// send command to serial
+	_, err := s.Write([]byte(strconv.Itoa(speed) + "\n"))
+	if err != nil {
+		log.Print("Error writing to serial: ", err)
+	}
 }

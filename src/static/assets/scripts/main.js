@@ -83,6 +83,21 @@ window.onload = () => {
             return false;
         }
     };
+    document.getElementById('fanspeed-set-button').onclick = () => {
+        if (!conn || !connected) {
+            return false;
+        }
+        const speedStr = document.getElementById('fanspeed-input-box').value;
+        if(!speedStr || speedStr === "") {
+            return false;
+        }
+        const speed = parseInt(speedStr);
+        if(speed < 0 || speed > 10000 || isNaN(speed)) {
+            return false;
+        }
+        conn.send("{\"op\":\"set-fan-speed\", \"data\":\"" + speed + "\"}");
+        return true;
+    }
 
     const listSerial = () => {
         if(!conn) {

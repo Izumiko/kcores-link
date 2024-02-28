@@ -35,6 +35,12 @@ body {
     margin: 20px 0 20px 0;
 }
 
+#fanspeed-panel {
+    width: 1000px;
+    height: 80px;
+    margin: 20px 0 20px 0;
+}
+
 #input-panel {
     width: 1000px;
     height: 80px;
