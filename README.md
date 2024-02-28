@@ -11,8 +11,13 @@ KCORES Link
 
 # 下载并运行
 
-Windows 用户直接下载本项目, 运行 release 文件夹中的 kcores-link.exe 即可. 
-MAC 和 Linux 用户自行下载代码后, 执行 srcipts/build.sh 即可编译获得特定操作系统下的可运行版本 (需要 Golang, 请自行下载).  
+访问[Release页面](https://github.com/Izumiko/kcores-link/releases)，按操作系统下载对应版本。
+
+若想手动编译，则在下载源代码后，在`src`目录运行如下命令：
+
+```shell
+go build -o ../
+```
 
 # Author
 
