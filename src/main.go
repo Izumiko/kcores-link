@@ -37,7 +37,6 @@ func main() {
 
 	bfstk = new(BufferStack)
 
-	fmt.Printf("Listening on localhost:8080 for WEB UI\n")
 	r := mux.NewRouter()
 
 	// Handle WebSocket connection first
@@ -54,7 +53,9 @@ func main() {
 	r.PathPrefix("/").Handler(fileServer)
 
 	http.Handle("/", r)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+
+	fmt.Printf("Listening on :38081 for WEB UI\n")
+	log.Fatal(http.ListenAndServe(":38081", nil))
 }
 
 type EasyPowerData struct {
@@ -113,10 +114,6 @@ type BufferStack struct {
 }
 
 func (bs *BufferStack) add(buf []byte) {
-	matchTab := map[string]bool{
-		"1": true, "2": true, "3": true, "4": true, "5": true, "6": true, "7": true, "8": true, "9": true, "0": true, ",": true, ".": true,
-	}
-
 	for _, b := range buf {
 		// clean stack
 		cb := string(b)
@@ -126,7 +123,8 @@ func (bs *BufferStack) add(buf []byte) {
 			bs.buf = []byte{} // reset
 			continue
 		}
-		if _, ok := matchTab[cb]; ok {
+		// valid b: 0-9.,
+		if b >= 48 && b <= 57 || b == 46 || b == 44 {
 			bs.buf = append(bs.buf, b)
 		}
 	}
@@ -161,17 +159,14 @@ func processsSerialData(buf []byte) {
 }
 
 func ReadSerial() {
-	buf := make([]byte, 64)
-	_, err := s.Read(buf)
-	if err != nil {
-		log.Fatal(err)
-	}
-	bfstk.add(buf)
-}
-
-func listenSerial() {
 	for {
-		ReadSerial()
+		buf := make([]byte, 64)
+		_, err := s.Read(buf)
+		if err != nil {
+			log.Print(err)
+			break
+		}
+		bfstk.add(buf)
 	}
 }
 
@@ -181,19 +176,34 @@ func getDataFromWEB() {
 		case message := <-hub.broadcast:
 			res := &DataFrame{}
 			json.Unmarshal(message, &res)
+			if verbose {
+				fmt.Println("Message from WEB: " + res.OP)
+			}
 			if res.OP == "connect-serial" {
 				_, err := OpenSerial(res.Data)
 				if err != nil {
 					writeSerialConnectionStatusToWEB(false)
+					if verbose {
+						fmt.Println(err)
+					}
 				} else {
 					writeSerialConnectionStatusToWEB(true)
-					go listenSerial()
+					if verbose {
+						fmt.Println("Serial connected:" + serialName)
+					}
+					go ReadSerial()
 				}
 			} else if res.OP == "disconnect-serial" {
 				if ok := closeSerial(); ok {
 					writeSerialConnectionStatusToWEB(false)
+					if verbose {
+						fmt.Println("Serial disconnected:" + serialName)
+					}
 				} else {
 					// can not close serial
+					if verbose {
+						fmt.Println("Serial can not be closed:" + serialName)
+					}
 				}
 			} else if res.OP == "list-serial" {
 				writeSerialListToWEB()

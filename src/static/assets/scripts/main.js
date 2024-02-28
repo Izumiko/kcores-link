@@ -48,10 +48,13 @@ window.onload = () => {
                     if (!name.value || name.value === "") {
                         name.value = receivedServerData.serialName;
                     }
+                    connected = true;
                     serialConnected();
                 } else if (receivedServerData.op === "serial-connected") {
+                    connected = true;
                     serialConnected();
                 } else if (receivedServerData.op === "serial-disconnected") {
+                    connected = false;
                     serialDisconnected();
                 } else if (receivedServerData.op === "serial-list") {
                     updateList(receivedServerData.data);
