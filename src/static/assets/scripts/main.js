@@ -12,15 +12,15 @@ const options = {
 }
 
 const appendServerData = (serverData) => {
-    new CountUp('input-voltage', serverData.data.InputVoltage, { startVal: parseFloat(document.getElementById('input-voltage').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
-    new CountUp('input-current', serverData.data.InputCurrent, { startVal: parseFloat(document.getElementById('input-current').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
-    new CountUp('input-power', serverData.data.InputPower, { startVal: parseFloat(document.getElementById('input-power').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
-    new CountUp('output-voltage', serverData.data.OutputVoltage, { startVal: parseFloat(document.getElementById('output-voltage').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
-    new CountUp('output-current', serverData.data.OutputCurrent, { startVal: parseFloat(document.getElementById('output-current').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
-    new CountUp('output-power', serverData.data.OutputPower, { startVal: parseFloat(document.getElementById('output-power').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
-    new CountUp('intake-air-temp', serverData.data.IntakeAirTemp, { startVal: parseFloat(document.getElementById('intake-air-temp').innerHTML), decimalPlaces: 2, duration: 2, ...options }).start()
-    new CountUp('outtake-air-temp', serverData.data.OuttakeAirTemp, { startVal: parseFloat(document.getElementById('outtake-air-temp').innerHTML), decimalPlaces: 2, duration: 2, ...options }).start()
-    new CountUp('fan-speed', serverData.data.FanSpeed, { startVal: parseFloat(document.getElementById('fan-speed').innerHTML), decimalPlaces: 0, duration: 2, ...options }).start()
+    new CountUp('input-voltage', serverData.InputVoltage, { startVal: parseFloat(document.getElementById('input-voltage').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
+    new CountUp('input-current', serverData.InputCurrent, { startVal: parseFloat(document.getElementById('input-current').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
+    new CountUp('input-power', serverData.InputPower, { startVal: parseFloat(document.getElementById('input-power').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
+    new CountUp('output-voltage', serverData.OutputVoltage, { startVal: parseFloat(document.getElementById('output-voltage').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
+    new CountUp('output-current', serverData.OutputCurrent, { startVal: parseFloat(document.getElementById('output-current').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
+    new CountUp('output-power', serverData.OutputPower, { startVal: parseFloat(document.getElementById('output-power').innerHTML), decimalPlaces: 1, duration: 2, ...options }).start()
+    new CountUp('intake-air-temp', serverData.IntakeAirTemp, { startVal: parseFloat(document.getElementById('intake-air-temp').innerHTML), decimalPlaces: 2, duration: 2, ...options }).start()
+    new CountUp('outtake-air-temp', serverData.OuttakeAirTemp, { startVal: parseFloat(document.getElementById('outtake-air-temp').innerHTML), decimalPlaces: 2, duration: 2, ...options }).start()
+    new CountUp('fan-speed', serverData.FanSpeed, { startVal: parseFloat(document.getElementById('fan-speed').innerHTML), decimalPlaces: 0, duration: 2, ...options }).start()
 }
 
 window.onload = () => {
@@ -30,6 +30,9 @@ window.onload = () => {
     if (window["WebSocket"]) {
         const url = window.origin.replace(/^http/, 'ws') + '/ws';
         conn = new WebSocket(url);
+        conn.onopen = (evt) => {
+            listSerial()
+        }
         conn.onclose = (evt) => {
             serialDisconnected()
         };
@@ -40,11 +43,18 @@ window.onload = () => {
 
                 // op switch
                 if (receivedServerData.op === "income-data") {
-                    appendServerData(receivedServerData);
+                    appendServerData(receivedServerData.data);
+                    const name = document.getElementById('connect-input-box');
+                    if (!name.value || name.value === "") {
+                        name.value = receivedServerData.serialName;
+                    }
+                    serialConnected();
                 } else if (receivedServerData.op === "serial-connected") {
                     serialConnected();
                 } else if (receivedServerData.op === "serial-disconnected") {
                     serialDisconnected();
+                } else if (receivedServerData.op === "serial-list") {
+                    updateList(receivedServerData.data);
                 }
             }
         };
@@ -70,6 +80,26 @@ window.onload = () => {
             return false;
         }
     };
+
+    const listSerial = () => {
+        if(!conn) {
+            return false;
+        }
+        conn.send("{\"op\":\"list-serial\", \"data\":\"\"}");
+        return true;
+    }
+
+    const updateList = (plist) => {
+        // add ports to datalist
+        const datalist = document.getElementById('serial-port-list');
+        datalist.innerHTML = "";
+        plist.forEach((p) => {
+            const option = document.createElement('option');
+            option.value = p;
+            datalist.appendChild(option);
+        });
+
+    }
 
     const connectSerial = () => {
         if (!conn) {

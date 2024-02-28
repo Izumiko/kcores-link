@@ -7,21 +7,34 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/tarm/serial"
+	"go.bug.st/serial"
 )
 
 //go:embed static
 var staticContent embed.FS
 
 var hub *Hub
-var s *serial.Port
+var s serial.Port
+var serialName string
 
 var bfstk *BufferStack
 
+var verbose bool
+
 func main() {
+	verbose = false
+	args := os.Args[1:]
+	if len(args) > 0 {
+		if args[0] == "-v" {
+			verbose = true
+		}
+	}
+
 	bfstk = new(BufferStack)
 
 	fmt.Printf("Listening on localhost:8080 for WEB UI\n")
@@ -45,15 +58,15 @@ func main() {
 }
 
 type EasyPowerData struct {
-	InputVoltage   string
-	InputCurrent   string
-	InputPower     string
-	OutputVoltage  string
-	OutputCurrent  string
-	OutputPower    string
-	IntakeAirTemp  string
-	OuttakeAirTemp string
-	FanSpeed       string
+	InputVoltage   float32 `json:"InputVoltage"`
+	InputCurrent   float32 `json:"InputCurrent"`
+	InputPower     float32 `json:"InputPower"`
+	OutputVoltage  float32 `json:"OutputVoltage"`
+	OutputCurrent  float32 `json:"OutputCurrent"`
+	OutputPower    float32 `json:"OutputPower"`
+	IntakeAirTemp  float32 `json:"IntakeAirTemp"`
+	OuttakeAirTemp float32 `json:"OuttakeAirTemp"`
+	FanSpeed       float32 `json:"FanSpeed"`
 }
 
 type DataFrame struct {
@@ -61,13 +74,28 @@ type DataFrame struct {
 	Data string `json:"data"`
 }
 
-func OpenSerial(serialPortName string) (*serial.Port, error) {
-	c := &serial.Config{Name: serialPortName, Baud: 115200}
+type StatusDataFrame struct {
+	OP         string        `json:"op"`
+	SerialName string        `json:"serialName"`
+	Data       EasyPowerData `json:"data"`
+}
+
+type SerialListDataFrame struct {
+	OP   string   `json:"op"`
+	Data []string `json:"data"`
+}
+
+func OpenSerial(serialPortName string) (serial.Port, error) {
+	mode := &serial.Mode{
+		BaudRate: 115200,
+	}
 	var err error
-	s, err = serial.OpenPort(c)
+	s, err = serial.Open(serialPortName, mode)
 	if err != nil {
 		return nil, err
 	}
+	serialName = serialPortName
+
 	return s, nil
 }
 
@@ -104,23 +132,30 @@ func (bs *BufferStack) add(buf []byte) {
 	}
 }
 
+func parseFloat32(s string) float32 {
+	f, _ := strconv.ParseFloat(s, 32)
+	return float32(f)
+}
+
 func processsSerialData(buf []byte) {
-	fmt.Println(string(buf))
+	if verbose {
+		fmt.Println(string(buf))
+	}
 	// parse
 	arr := strings.Split(string(buf), ",")
 	if len(arr) < 9 {
 		return
 	}
 	var pd EasyPowerData
-	pd.InputVoltage = arr[0]
-	pd.InputCurrent = arr[1]
-	pd.InputPower = arr[2]
-	pd.OutputVoltage = arr[3]
-	pd.OutputCurrent = arr[4]
-	pd.OutputPower = arr[5]
-	pd.IntakeAirTemp = arr[6]
-	pd.OuttakeAirTemp = arr[7]
-	pd.FanSpeed = arr[8]
+	pd.InputVoltage = parseFloat32(arr[0])
+	pd.InputCurrent = parseFloat32(arr[1])
+	pd.InputPower = parseFloat32(arr[2])
+	pd.OutputVoltage = parseFloat32(arr[3])
+	pd.OutputCurrent = parseFloat32(arr[4])
+	pd.OutputPower = parseFloat32(arr[5])
+	pd.IntakeAirTemp = parseFloat32(arr[6])
+	pd.OuttakeAirTemp = parseFloat32(arr[7])
+	pd.FanSpeed = parseFloat32(arr[8])
 	// send
 	writeIncomeDataToWEB(pd)
 }
@@ -134,27 +169,11 @@ func ReadSerial() {
 	bfstk.add(buf)
 }
 
-func lisenSerial() {
+func listenSerial() {
 	for {
 		ReadSerial()
 	}
 }
-
-//func runWEBUIServer() {
-//	fmt.Printf("Listening on localhost:8080 for WEB UI\n")
-//	go http.ListenAndServe(":8080", http.FileServer(http.Dir("./web-template/")))
-//}
-//
-//func runWSServer() {
-//	// websocket hub
-//	hub = newHub()
-//	go hub.run()
-//	go getDataFromWEB()
-//	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-//		serveWs(hub, w, r)
-//	})
-//	http.ListenAndServe(":8081", nil)
-//}
 
 func getDataFromWEB() {
 	for {
@@ -168,7 +187,7 @@ func getDataFromWEB() {
 					writeSerialConnectionStatusToWEB(false)
 				} else {
 					writeSerialConnectionStatusToWEB(true)
-					go lisenSerial()
+					go listenSerial()
 				}
 			} else if res.OP == "disconnect-serial" {
 				if ok := closeSerial(); ok {
@@ -176,7 +195,8 @@ func getDataFromWEB() {
 				} else {
 					// can not close serial
 				}
-
+			} else if res.OP == "list-serial" {
+				writeSerialListToWEB()
 			}
 		}
 	}
@@ -184,20 +204,44 @@ func getDataFromWEB() {
 
 func writeIncomeDataToWEB(d EasyPowerData) {
 	// format websocket json info
-	tmp := "{\"op\":\"income-data\", \"data\":{\"InputVoltage\":%s,\"InputCurrent\":%s,\"InputPower\":%s,\"OutputVoltage\":%s,\"OutputCurrent\":%s,\"OutputPower\":%s,\"IntakeAirTemp\":%s,\"OuttakeAirTemp\":%s,\"FanSpeed\":%s}}"
-	frame := fmt.Sprintf(tmp, d.InputVoltage, d.InputCurrent, d.InputPower, d.OutputVoltage, d.OutputCurrent, d.OutputPower, d.IntakeAirTemp, d.OuttakeAirTemp, d.FanSpeed)
-	fmt.Println(frame)
+	var info StatusDataFrame
+	info.OP = "income-data"
+	info.SerialName = serialName
+	info.Data = d
+	frame, _ := json.Marshal(info)
+	if verbose {
+		fmt.Println(string(frame))
+	}
 	// send info to websocket data hub
-	hub.broadcast <- []byte(frame)
+	hub.broadcast <- frame
 }
 
 func writeSerialConnectionStatusToWEB(connected bool) {
-	str := "serial-disconnected"
+	op := "serial-disconnected"
+	d := ""
 	if connected {
-		str = "serial-connected"
+		op = "serial-connected"
+		d = serialName
 	}
 	// format websocket json info
-	frame := "{\"op\":\"" + str + "\", \"data\":\"\"}"
+	var info DataFrame
+	info.OP = op
+	info.Data = d
+	frame, _ := json.Marshal(info)
 	// send info to websocket data hub
-	hub.broadcast <- []byte(frame)
+	hub.broadcast <- frame
+}
+
+func writeSerialListToWEB() {
+	var info SerialListDataFrame
+	info.OP = "serial-list"
+	ports, err := serial.GetPortsList()
+	if err != nil {
+		log.Fatal(err)
+	}
+	info.Data = ports
+	// format websocket json info
+	frame, _ := json.Marshal(info)
+	// send info to websocket data hub
+	hub.broadcast <- frame
 }
