@@ -1,13 +1,20 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
-	"github.com/tarm/serial"
+	"io/fs"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/gorilla/mux"
+	"github.com/tarm/serial"
 )
+
+//go:embed static
+var staticContent embed.FS
 
 var hub *Hub
 var s *serial.Port
@@ -16,9 +23,25 @@ var bfstk *BufferStack
 
 func main() {
 	bfstk = new(BufferStack)
-	// run
-	runWEBUIServer()
-	runWSServer()
+
+	fmt.Printf("Listening on localhost:8080 for WEB UI\n")
+	r := mux.NewRouter()
+
+	// Handle WebSocket connection first
+	hub = newHub()
+	go hub.run()
+	go getDataFromWEB()
+	r.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		serveWs(hub, w, r)
+	})
+
+	// Serve static files from embedded content
+	view, _ := fs.Sub(staticContent, "static")
+	fileServer := http.FileServer(http.FS(view))
+	r.PathPrefix("/").Handler(fileServer)
+
+	http.Handle("/", r)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 type EasyPowerData struct {
@@ -117,21 +140,21 @@ func lisenSerial() {
 	}
 }
 
-func runWEBUIServer() {
-	fmt.Printf("Listening on localhost:8080 for WEB UI\n")
-	go http.ListenAndServe(":8080", http.FileServer(http.Dir("./web-template/")))
-}
-
-func runWSServer() {
-	// websocket hub
-	hub = newHub()
-	go hub.run()
-	go getDataFromWEB()
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		serveWs(hub, w, r)
-	})
-	http.ListenAndServe(":8081", nil)
-}
+//func runWEBUIServer() {
+//	fmt.Printf("Listening on localhost:8080 for WEB UI\n")
+//	go http.ListenAndServe(":8080", http.FileServer(http.Dir("./web-template/")))
+//}
+//
+//func runWSServer() {
+//	// websocket hub
+//	hub = newHub()
+//	go hub.run()
+//	go getDataFromWEB()
+//	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+//		serveWs(hub, w, r)
+//	})
+//	http.ListenAndServe(":8081", nil)
+//}
 
 func getDataFromWEB() {
 	for {
