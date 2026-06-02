@@ -1,14 +1,11 @@
 module kcores-link
 
-go 1.22
+go 1.25.0
 
 require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
-	go.bug.st/serial v1.6.4
+	go.bug.st/serial v1.7.1
 )
 
-require (
-	github.com/creack/goselect v0.1.2 // indirect
-	golang.org/x/sys v0.19.0 // indirect
-)
+require golang.org/x/sys v0.43.0 // indirect
